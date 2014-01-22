@@ -1,0 +1,2 @@
+#define MAX_ARGUMENTS 10
+#define MAX_PROCESSES 10
