@@ -2,6 +2,14 @@
 #include <stdlib.h>
 #include "schedule.h"
 
+
+int filenameFlag = 1;
+int argCounter = 0;
+int counter = 2;
+char *filename = 0;
+char *args[MAX_ARGUMENTS + 1];
+int pid = 0;
+
 void *cleanArgs(char *args[]) {
    int i = 0;
 
@@ -10,32 +18,30 @@ void *cleanArgs(char *args[]) {
    }
 }
 
+int forkAndClean() {
+   if((pid = fork())) {
+      filenameFlag = 1;
+      argCounter = 0;
+      counter++;
+      cleanArgs(args);
+   }
+   else {
+      execvp(filename, args);
+   }
+   
+   return pid;
+}
+
 int main(int argc, char *argv[]) {
 
    int quantum = atoi(argv[1]);
-   
-   int pid = 0;
-   int counter = 2;
-   int filenameFlag = 1;
-   int argCounter = 0;
-   
-   char *filename = 0;
-   char *args[MAX_ARGUMENTS + 1];
 
    cleanArgs(args);
    
    while(counter < argc) {
       // if we hit a colon we are going to need to forx and exec
       if(!strcmp(argv[counter], ":")) {
-         if((pid = fork())) {
-            filenameFlag = 1;
-            argCounter = 0;
-            counter++;
-            cleanArgs(args);
-         }
-         else {
-            execvp(filename, args);
-         }
+         pid = forkAndClean();
       }
    
       // save the file name for exec
@@ -52,24 +58,7 @@ int main(int argc, char *argv[]) {
    }
    
    // need to get the last one
-      if((pid = fork())) {
-         filenameFlag = 1;
-         argCounter = 0;
-         counter++;
-         cleanArgs(args);
-      }
-      else {
-         execvp(filename, args);
-      }
-
-
-
-
-
-
-
+   pid = forkAndClean();
 }
-
-
 
 
