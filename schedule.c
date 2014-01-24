@@ -9,27 +9,38 @@ int counter = 2;
 char *filename = 0;
 char *args[MAX_ARGUMENTS + 1];
 int pid = 0;
+int pidList[MAX_PROCESSES];
+int numProcesses = 0;
 
 void *cleanArgs(char *args[]) {
    int i = 0;
 
    for(i = 0; i < MAX_ARGUMENTS; i++) {
-      args[i] = 0;
+      args[i] = (char *)0;
    }
 }
 
 int forkAndClean() {
    if((pid = fork())) {
+      pidList[numProcesses++];
       filenameFlag = 1;
       argCounter = 0;
       counter++;
       cleanArgs(args);
    }
    else {
-      execvp(filename, args);
+      pause();
+      printf("%d\n",execvp(filename, args));
+      printf("SHOULD NOT EVER BE HERE\n");
    }
    
    return pid;
+}
+
+void runProgram() {
+
+
+
 }
 
 int main(int argc, char *argv[]) {
@@ -47,6 +58,7 @@ int main(int argc, char *argv[]) {
       // save the file name for exec
       if(filenameFlag) {
          filename = argv[counter];
+         args[argCounter++] = filename;
          filenameFlag = 0;
       }
       //save the arguments for exec
@@ -58,7 +70,13 @@ int main(int argc, char *argv[]) {
    }
    
    // need to get the last one
+
    pid = forkAndClean();
+   
+   runProgram();
 }
+
+
+
 
 
