@@ -125,7 +125,7 @@ int main(int argc, char *argv[]) {
    
    timer.it_interval.tv_sec = 0;
    timer.it_interval.tv_usec = 0;
-   timer.it_value.tv_sec = quantum * 5;
+   timer.it_value.tv_sec = quantum;
    timer.it_value.tv_usec = 0; 
   
    
