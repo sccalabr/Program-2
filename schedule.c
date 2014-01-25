@@ -2,8 +2,8 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <signal.h>
+#include <sys/time.h>
 #include "schedule.h"
-
 
 int filenameFlag = 1;
 int argCounter = 0;
@@ -12,25 +12,49 @@ char *filename = 0;
 char *args[MAX_ARGUMENTS + 1];
 int pid = 0;
 int pidList[MAX_PROCESSES];
+int pidListCounter = 0;
 int numProcesses = 0;
+int currentPid = 0;
+int quantum = 0;
+
 
 void SIGCONT_handler(int arg) {
+   printf("====SIGNCONT====\n");
    signal(arg, SIGCONT_handler);
 }
 
-void SIGALARM_handler(int arg) {
+void SIGSTOP_handler(int arg) {
+   printf("===SIGSTOP===\n");
+   signal(arg, SIGSTOP_handler);
+}
+
+void SIGALRM_handler(int arg) {
+   printf("===SIGNALARM===\n");
    /* The quantum ran out, pause the process that was running.
     * Then select the next process and send a singal to revive 
     * it.
     */
+    kill(currentPid, SIGSTOP);
+    counter = (counter + 1) % numProcesses;
+    currentPid = pidList[counter];
 }
 
 void SIGCHLD_handler(int arg) {
+  printf("===SIGCHILD==\n");
   /* If this is received we are going to want to 
    * remove the process since it either was killed
    * or finished executing.
    */
+   int i;
+   
+   for(i = counter; i < numProcesses; i++) {
+      pidList[i] = pidList[i + 1];
+   }     
 
+    numProcesses--;
+   
+    counter %=  numProcesses;
+    currentPid = pidList[counter];
 }
 
 void *cleanArgs(char *args[]) {
@@ -43,7 +67,7 @@ void *cleanArgs(char *args[]) {
 
 int forkAndClean() {
    if((pid = fork())) {
-      pidList[numProcesses++];
+      pidList[numProcesses++] = pid;
       filenameFlag = 1;
       argCounter = 0;
       counter++;
@@ -51,6 +75,7 @@ int forkAndClean() {
    }
    else {
       signal(SIGCONT, SIGCONT_handler);
+      signal(SIGSTOP, SIGSTOP_handler);
       pause();
       printf("%d\n",execvp(filename, args));
       printf("SHOULD NOT EVER BE HERE\n");
@@ -60,13 +85,34 @@ int forkAndClean() {
 }
 
 void runProgram() {
-   signal(arg, SIGALARM_handler);
-   signal(arg, SIGCHLD_handler);
+   counter = 0;
+   struct itimerval timer;
+   
+   timer.it_interval.tv_sec = 0;
+   timer.it_interval.tv_usec = 0;
+   timer.it_value.tv_sec = quantum;
+   timer.it_value.tv_usec = 0; 
+  
+   signal(SIGALRM, SIGALRM_handler);
+   signal(SIGCHLD, SIGCHLD_handler);
+   signal(SIGCONT, SIGCONT_handler);
+   signal(SIGSTOP, SIGSTOP_handler);
+   
+   while(numProcesses > 0) {
+      int status;
+      
+      setitimer(ITIMER_REAL, &timer,0);
+      currentPid = pidList[counter % numProcesses];
+      printf("PID: %d\n", currentPid);
+      kill(currentPid, SIGCONT);
+//      sleep(quantum);
+      pause();
+   }
 }
 
 int main(int argc, char *argv[]) {
 
-   int quantum = atoi(argv[1]);
+   quantum = atoi(argv[1]);
 
    cleanArgs(args);
    
@@ -74,6 +120,7 @@ int main(int argc, char *argv[]) {
       // if we hit a colon we are going to need to forx and exec
       if(!strcmp(argv[counter], ":")) {
          pid = forkAndClean();
+         pidList[pidListCounter++] = pid;
       }
    
       // save the file name for exec
@@ -93,8 +140,10 @@ int main(int argc, char *argv[]) {
    // need to get the last one
 
    pid = forkAndClean();
-   
+   pidList[pidListCounter++] = pid;
+
    runProgram();
 }
+
 
 
