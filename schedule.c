@@ -99,13 +99,11 @@ void runProgram() {
    signal(SIGSTOP, SIGSTOP_handler);
    
    while(numProcesses > 0) {
-      int status;
-      
+     printf("top of while loop\n"); 
       setitimer(ITIMER_REAL, &timer,0);
       currentPid = pidList[counter % numProcesses];
       printf("PID: %d\n", currentPid);
       kill(currentPid, SIGCONT);
-//      sleep(quantum);
       pause();
    }
 }
