@@ -13,13 +13,30 @@ int counter = 2;
 char *filename = 0;
 char *args[MAX_ARGUMENTS + 1];
 int pid = 0;
-int pidList[MAX_PROCESSES];
-int pidListCounter = 0;
 int numProcesses = 0;
 int currentPid = 0;
 double quantum = 0;
 int alarmFlag = 0;
 
+typedef struct Node {
+   unsigned int pid;
+   struct Node *next;
+   struct Node *prev;
+} Node;
+
+Node *startNode = NULL;
+Node *lastNode = NULL;
+Node *currentNode = NULL;
+
+
+Node *findNextNode() {
+   
+   if(numProcesses == 0) {
+      return NULL;
+   }
+   
+   return currentNode = currentNode->next ? currentNode->next : startNode;
+}
 
 void SIGCONT_handler(int arg) {
    if(LOGGER)
@@ -38,12 +55,11 @@ void SIGALRM_handler(int arg) {
     * Then select the next process and send a singal to revive 
     * it.
     */
-    if(LOGGER)
-      printf("SIGALARM\n");
-    alarmFlag = 1;
-    kill(currentPid, SIGSTOP);
-    counter = (counter + 1) % numProcesses;
-    currentPid = pidList[counter];
+   if(LOGGER)
+      printf("IN SIGALARM\n");
+   kill(currentNode->pid, SIGSTOP);
+   Node *next = findNextNode();
+   kill(next->pid, SIGCONT);
 }
 
 void SIGCHLD_handler(int arg) {
@@ -52,36 +68,7 @@ void SIGCHLD_handler(int arg) {
    * or finished executing.
    */
    if(LOGGER)
-      printf("====>IN SIGCHLD<====\ncounter: %d   numProcesses: %d\n", counter, numProcesses);
-   int i;
-   int status;
-   
-
-   if(LOGGER) {  
-      for(i = counter; i < numProcesses; i++) {
-         printf("%d\n", pidList[i]);
-      }
-   }
-   for(i = counter; i < numProcesses; i++) {
-      pidList[i] = pidList[i + 1];
-   }     
-   
-   if(LOGGER) {
-      for(i = counter; i < numProcesses; i++) {
-         printf("%d\n", pidList[i]);
-      }
-   }
-   
-   numProcesses--;
-   
-   if(numProcesses > 0) {
-      counter %=  numProcesses;
-      currentPid = pidList[counter];
-   }
-   else {
-      exit(0);
-   }
-    //printf("DONE WITH SIGCHILD.... WHY DIDN'T PRINT\n");
+      printf("IN SIGCHLD\n");
 }
 
 void *cleanArgs(char *args[]) {
@@ -93,83 +80,73 @@ void *cleanArgs(char *args[]) {
 }
 
 int forkAndClean() {
+   int status;
+   signal(SIGALRM, SIGALRM_handler);
    if((pid = fork())) {
-      pidList[numProcesses++] = pid;
+      if(startNode == NULL) {
+         startNode = calloc(sizeof(Node), 1);
+         startNode->pid = pid;
+         startNode->next = NULL;
+         startNode->prev = NULL;
+         lastNode = startNode;
+         currentNode = startNode;
+      }
+      else {
+         Node *temp = (Node *)calloc(sizeof(Node), 1);
+         temp->pid = pid;
+         temp->next = startNode;
+         temp->prev = lastNode;
+         
+         lastNode->next = temp;
+         lastNode = temp;
+      }
       filenameFlag = 1;
       argCounter = 0;
-      counter++;
       cleanArgs(args);
-      sleep(2);
    }
    else {
-      signal(SIGCONT, SIGCONT_handler);
-      signal(SIGSTOP, SIGSTOP_handler);
-      if(LOGGER)
-         printf("CHILD: %d\n", getpid());
       kill(getpid(), SIGSTOP);
-      //pause();
       printf("%d\n",execvp(filename, args));
       printf("SHOULD NOT EVER BE HERE\n");
    }
-   
-   return pid;
+   counter++;
+   numProcesses++;
+   waitpid(pid, &status, WUNTRACED);
 }
 
 void runProgram() {
-   counter = 0;
-/*   struct itimerval timer;
+   int status;
+   struct itimerval timer;
+   timer.it_value.tv_sec = quantum / 1000;
+   timer.it_value.tv_usec = quantum;
+   timer.it_interval = timer.it_value;
    
-   timer.it_interval.tv_sec = 0;
-   timer.it_interval.tv_usec = 0;
-   timer.it_value.tv_sec = quantum;
-   timer.it_value.tv_usec = 0;
-  
+ 
+   setitimer(ITIMER_REAL, &timer, 0);
    signal(SIGALRM, SIGALRM_handler);
-*/   signal(SIGCHLD, SIGCHLD_handler);
-   signal(SIGCONT, SIGCONT_handler);
-   signal(SIGSTOP, SIGSTOP_handler);
-   
    while(numProcesses > 0) {
-     //printf("top of while loop\n");
- /*    
-      timer.it_interval.tv_sec = 0;
-      timer.it_interval.tv_usec = 0;
-      timer.it_value.tv_sec = quantum;
-      timer.it_value.tv_usec = 0;
-  
-      setitimer(ITIMER_REAL, &timer,0);
-         if(LOGGER)
- */   if(LOGGER)  
-         printf("currentPID: %d\n", currentPid);
-      currentPid = pidList[counter % numProcesses];
+      kill(currentNode->pid, SIGCONT);
       
-      if(LOGGER)
-         printf("currentPID: %d\n", currentPid);
-      
-      int status;
-      while(!alarmFlag && waitpid(currentPid, &status, WNOHANG ) == 0) {
-         kill(currentPid, SIGCONT);
-         if(LOGGER)
-            printf("waiting on child...\n");
-         pause();
+      if(waitpid(currentNode->pid, &status, 0)) {
+         currentNode->prev->next = currentNode->next;
+         currentNode->next->prev = currentNode->prev;
+         Node *nodeToFree = currentNode;
+         currentNode = currentNode->next;
+         free(nodeToFree);
+         numProcesses--;
       }
-      alarmFlag = 0;
    }
-   
-   if(LOGGER)
-      printf("DONE WITH PROGRAM\n\n\n\n\n");
 }
 
 int main(int argc, char *argv[]) {
 
-   quantum = atol(argv[1]) / 1000;
+   quantum = atol(argv[1]);
 
    cleanArgs(args);
    
    while(counter < argc) {
       if(!strcmp(argv[counter], ":")) {
-         pid = forkAndClean();
-         pidList[pidListCounter++] = pid;
+         forkAndClean();
       }
    
       if(filenameFlag) {
@@ -182,9 +159,9 @@ int main(int argc, char *argv[]) {
       }
       counter++;
    }
-   pid = forkAndClean();
-   pidList[pidListCounter++] = pid;
    
+   forkAndClean();
+   startNode->prev = lastNode;
    runProgram();
 }
 
