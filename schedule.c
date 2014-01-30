@@ -14,9 +14,8 @@ char *filename = 0;
 char *args[MAX_ARGUMENTS + 1];
 int pid = 0;
 int numProcesses = 0;
-int currentPid = 0;
 double quantum = 0;
-int alarmFlag = 0;
+struct itimerval timer;
 
 typedef struct Node {
    unsigned int pid;
@@ -27,7 +26,6 @@ typedef struct Node {
 Node *startNode = NULL;
 Node *lastNode = NULL;
 Node *currentNode = NULL;
-
 
 Node *findNextNode() {
    
@@ -57,16 +55,15 @@ void SIGALRM_handler(int arg) {
     */
    if(LOGGER)
       printf("IN SIGALARM\n");
+   
+   setitimer(0, &timer, 0);
    kill(currentNode->pid, SIGSTOP);
    Node *next = findNextNode();
    kill(next->pid, SIGCONT);
+   setitimer(ITIMER_REAL, &timer, 0);
 }
 
 void SIGCHLD_handler(int arg) {
-  /* If this is received we are going to want to 
-   * remove the process since it either was killed
-   * or finished executing.
-   */
    if(LOGGER)
       printf("IN SIGCHLD\n");
 }
@@ -116,18 +113,18 @@ int forkAndClean() {
 
 void runProgram() {
    int status;
-   struct itimerval timer;
    timer.it_value.tv_sec = quantum / 1000;
    timer.it_value.tv_usec = quantum;
    timer.it_interval = timer.it_value;
    
- 
-   setitimer(ITIMER_REAL, &timer, 0);
    signal(SIGALRM, SIGALRM_handler);
+   
    while(numProcesses > 0) {
+      setitimer(ITIMER_REAL, &timer, 0);
       kill(currentNode->pid, SIGCONT);
       
       if(waitpid(currentNode->pid, &status, 0)) {
+         setitimer(0, &timer, 0);
          currentNode->prev->next = currentNode->next;
          currentNode->next->prev = currentNode->prev;
          Node *nodeToFree = currentNode;
