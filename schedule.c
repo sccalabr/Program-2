@@ -114,7 +114,7 @@ int forkAndClean() {
 void runProgram() {
    int status;
    timer.it_value.tv_sec = quantum / 1000;
-   timer.it_value.tv_usec = quantum;
+   timer.it_value.tv_usec = ((int)quantum % 1000) * 1000;
    timer.it_interval = timer.it_value;
    
    signal(SIGALRM, SIGALRM_handler);
